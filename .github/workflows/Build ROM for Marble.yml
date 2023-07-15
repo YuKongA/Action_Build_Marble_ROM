@@ -1,0 +1,70 @@
+﻿name: Build ROM for Marble
+on:
+  workflow_dispatch:
+    inputs:
+      URL:
+        description: "待移植包下载地址"
+        required: true
+      CUSTOM_VERSION:
+        description: "待打包版本号"
+      VENDOR_URL:
+        description: "底包下载地址"
+        required: true
+        default: 'https://bigota.d.miui.com/V14.0.23.0.TMRCNXM/miui_MARBLE_V14.0.23.0.TMRCNXM_749010fa11_13.0.zip'
+      IMAGE_TYPE:
+          description: "IMAGE 格式"
+          required: true
+          default: 'erofs'
+          type: choice
+          options:
+          - erofs
+          - ext4
+      EXT_RW:
+          description: 'EXT4 可读写'
+          required: true
+          type: boolean
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 最大化构建环境
+        uses: easimon/maximize-build-space@master
+        with:
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+      - name: 检出仓库文件
+        uses: actions/checkout@main
+      - name: 准备所需环境
+        run: |
+          sudo timedatectl set-timezone Asia/Shanghai
+          if [ -n "${{ github.event.inputs.CUSTOM_VERSION }}" ]; then
+              echo "date=${{ github.event.inputs.CUSTOM_VERSION }}" >> $GITHUB_ENV
+          else
+              echo "date=$(echo ${{ github.event.inputs.URL }} | cut -d"/" -f4)" >> $GITHUB_ENV
+          fi
+          echo "vendor_date=$(echo ${{ github.event.inputs.VENDOR_URL }} | cut -d"/" -f4)" >> $GITHUB_ENV
+          echo "device=marble" >> $GITHUB_ENV
+          sudo apt-get install python3 aria2 p7zip-full zstd
+      - name: 构建 ROM
+        run: |
+          sudo bash "$GITHUB_WORKSPACE"/make.sh ${{ github.event.inputs.URL }} ${{ env.date }} $GITHUB_ENV $GITHUB_WORKSPACE ${{ github.event.inputs.VENDOR_URL }} ${{ github.event.inputs.IMAGE_TYPE }} ${{ github.event.inputs.EXT_RW }}
+      - name: 处理 ROM
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE"/GithubRelease
+          cd "$GITHUB_WORKSPACE"/GithubRelease
+          sudo split -b 1536M -d "$GITHUB_WORKSPACE"/zip/"${{ env.NEW_PACKAGE_NAME }}" "${{ env.NEW_PACKAGE_NAME }}"
+          cd "$GITHUB_WORKSPACE"
+          touch file.log
+          echo -e "移植版本: ${{ env.date }}\n底包版本: ${{ env.vendor_date }}" > file.log
+      - name: 上传到 Github Release
+        uses: ncipollo/release-action@main
+        with:
+          artifacts: ${{ github.workspace }}/GithubRelease/*
+          name: "${{ env.date }}"
+          tag: "${{ env.date }}"
+          bodyFile: "${{ github.workspace }}/file.log"
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          token: ${{ secrets.GITHUB_TOKEN }}
