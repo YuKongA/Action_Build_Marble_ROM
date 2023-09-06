@@ -12,7 +12,10 @@ origin_date=$(echo ${URL} | cut -d"/" -f4)
 origin_Bottom_date=$(echo ${VENDOR_URL} | cut -d"/" -f4)
 ORIGN_ZIP_NAME=$(echo ${VENDOR_URL} | cut -d"/" -f5)
 android_version=$(echo ${URL} | cut -d"_" -f5 | cut -d"." -f1)
+
 device=marble
+
+magiskboot="$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot
 
 Start_Time() {
   Start_ns=$(date +'%s%N')
@@ -113,53 +116,83 @@ Start_Time
 echo -e "\e[1;31m - 去除 AVB2.0 校验 \e[0m"
 "$GITHUB_WORKSPACE"/tools/vbmeta-disable-verification "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vbmeta.img
 "$GITHUB_WORKSPACE"/tools/vbmeta-disable-verification "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vbmeta_system.img
-# 添加液态 2.0 支持
-echo -e "\e[1;31m - 添加液态 2.0 支持 \e[0m"
+# 修改 Vendor Boot
 mkdir -p "$GITHUB_WORKSPACE"/vendor_boot
-mv -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vendor_boot.img "$GITHUB_WORKSPACE"/vendor_boot
-cp -f "$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot "$GITHUB_WORKSPACE"/vendor_boot
 cd "$GITHUB_WORKSPACE"/vendor_boot
-"$GITHUB_WORKSPACE"/vendor_boot/magiskboot unpack "$GITHUB_WORKSPACE"/vendor_boot/vendor_boot.img
-comp=$("$GITHUB_WORKSPACE"/vendor_boot/magiskboot decompress ramdisk.cpio 2>&1 | grep -v 'raw' | sed -n 's;.*\[\(.*\)\];\1;p')
-if [ "$comp" ]; then
-  mv -f ramdisk.cpio ramdisk.cpio.$comp
-  "$GITHUB_WORKSPACE"/vendor_boot/magiskboot decompress ramdisk.cpio.$comp ramdisk_new.cpio 2>&1
+mv -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vendor_boot.img "$GITHUB_WORKSPACE"/vendor_boot
+$magiskboot unpack -h "$GITHUB_WORKSPACE"/vendor_boot/vendor_boot.img 2>&1
+if [ -f ramdisk.cpio ]; then
+  comp=$($magiskboot decompress ramdisk.cpio 2>&1 | grep -v 'raw' | sed -n 's;.*\[\(.*\)\];\1;p')
+  if [ "$comp" ]; then
+    mv -f ramdisk.cpio ramdisk.cpio.$comp
+    $magiskboot decompress ramdisk.cpio.$comp ramdisk.cpio 2>&1
+    if [ $? != 0 ] && $comp --help 2>/dev/null; then
+      $comp -dc ramdisk.cpio.$comp >ramdisk.cpio
+    fi
+  fi
+  mkdir -p ramdisk
+  chmod 755 ramdisk
+  cd ramdisk
+  EXTRACT_UNSAFE_SYMLINKS=1 cpio -d -F ../ramdisk.cpio -i 2>&1
 fi
+## 添加 FEAS 支持 (perfmgr.ko from diting)
+sudo mv -f $GITHUB_WORKSPACE/tools/added_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/
+echo "/lib/modules/perfmgr.ko:" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.dep
+echo "perfmgr.ko" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.load
+echo "perfmgr.ko" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.load.recovery
+## 添加更新的内核模块 (vboot)
+sudo mv -f $GITHUB_WORKSPACE/tools/updated_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/
+sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/*
+## 去除 A14 强制加密 (fstab)
 if [[ $android_version != "13" ]]; then
-  # 去除 A14 强制加密
-  echo -e "\e[1;33m - 去除 A14 强制加密 \e[0m"
-  rm -rf "$GITHUB_WORKSPACE"/tools/fstab.qcom
-  mv -f "$GITHUB_WORKSPACE"/tools/fstab.qcom-A14 "$GITHUB_WORKSPACE"/tools/fstab.qcom
+  echo -e "\e[1;33m - 去除 A14 强制加密 (fstab) \e[0m"
+  sudo rm -rf "$GITHUB_WORKSPACE"/tools/fstab.qcom
+  sudo mv -f "$GITHUB_WORKSPACE"/tools/fstab.qcom-A14 "$GITHUB_WORKSPACE"/tools/fstab.qcom
 fi
+## 移除 mi_ext 和 pangu (fstab)
 if [[ "${IMAGE_TYPE}" == "ext4" && "${EXT4_RW}" == "true" ]]; then
-  # 移除 mi_ext 和 pangu
-  echo -e "\e[1;33m - 移除 mi_ext 和 pangu \e[0m"
+  echo -e "\e[1;33m - 移除 mi_ext 和 pangu (fstab) \e[0m"
   sudo sed -i "/mi_ext/d" "$GITHUB_WORKSPACE"/tools/fstab.qcom
   sudo sed -i "/overlay/d" "$GITHUB_WORKSPACE"/tools/fstab.qcom
 fi
-"$GITHUB_WORKSPACE"/vendor_boot/magiskboot cpio "$GITHUB_WORKSPACE"/vendor_boot/ramdisk_new.cpio "add 0644 first_stage_ramdisk/fstab.qcom "$GITHUB_WORKSPACE"/tools/fstab.qcom" >/dev/null
-"$GITHUB_WORKSPACE"/vendor_boot/magiskboot compress=$comp ramdisk_new.cpio
+## 添加液态 2.0 支持 (fstab)
+echo -e "\e[1;31m - 添加液态 2.0 支持 (fstab) \e[0m"
+sudo mv -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/vendor_boot/first_stage_ramdisk/fstab.qcom
+sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/first_stage_ramdisk/fstab.qcom
+## 重新打包 Vendor Boot
+cd "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/
+find | sed 1d | cpio -H newc -R 0:0 -o -F ../ramdisk_new.cpio
+cd ..
+if [ "$comp" ]; then
+  $magiskboot compress=$comp ramdisk_new.cpio 2>&1
+  if [ $? != 0 ] && $comp --help 2>/dev/null; then
+    $comp -9c ramdisk_new.cpio >ramdisk.cpio.$comp
+  fi
+fi
 ramdisk=$(ls ramdisk_new.cpio* 2>/dev/null | tail -n1)
 if [ "$ramdisk" ]; then
   cp -f $ramdisk ramdisk.cpio
+  case $comp in
+  cpio) nocompflag="-n" ;;
+  esac
+  $magiskboot repack $nocompflag "$GITHUB_WORKSPACE"/vendor_boot/vendor_boot.img "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vendor_boot.img 2>&1
 fi
-"$GITHUB_WORKSPACE"/vendor_boot/magiskboot repack "$GITHUB_WORKSPACE"/vendor_boot/vendor_boot.img "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vendor_boot.img >/dev/null
 sudo rm -rf "$GITHUB_WORKSPACE"/vendor_boot
+# 替换 Vendor 的 fstab
 sudo cp -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/"${device}"/vendor/etc/fstab.qcom
 # 内置 TWRP (skkk v7.9)
 echo -e "\e[1;31m - 内置 TWRP (skkk v7.9) \e[0m"
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
-# 替换官方 Boot (Melt-Kernel-marble-v2.2)
-echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2) \e[0m"
+# 替换官方 Boot (Melt-Kernel-marble-v2.2.3)
+echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.3) \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/boot
 cd "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/boot.img "$GITHUB_WORKSPACE"/boot
-cp -f "$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot "$GITHUB_WORKSPACE"/boot
-"$GITHUB_WORKSPACE"/boot/magiskboot unpack "$GITHUB_WORKSPACE"/boot/boot.img >/dev/null
+$magiskboot unpack "$GITHUB_WORKSPACE"/boot/boot.img >/dev/null
 cd "$GITHUB_WORKSPACE"/boot
 rm "$GITHUB_WORKSPACE"/boot/kernel
 cp -f "$GITHUB_WORKSPACE"/tools/boot_patch/Image "$GITHUB_WORKSPACE"/boot/kernel
-"$GITHUB_WORKSPACE"/boot/magiskboot repack "$GITHUB_WORKSPACE"/boot/boot.img "$GITHUB_WORKSPACE"/images/boot_patch.img >/dev/null
+$magiskboot repack "$GITHUB_WORKSPACE"/boot/boot.img "$GITHUB_WORKSPACE"/images/boot_patch.img >/dev/null
 rm -rf "$GITHUB_WORKSPACE"/boot
 # 修改 Vendor DLKM
 echo -e "\e[1;31m - 修改 Vendor DLKM \e[0m"
@@ -169,21 +202,8 @@ for i in $unneeded_kmods; do
   sudo rm -rf "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/$i"
   sed -i "/$i/d" "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/modules.load"
 done
-## 添加 FEAS 支持 (perfmgr.ko from diting)
-"$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot hexpatch "$GITHUB_WORKSPACE"/images/system_ext/lib64/libmigui.so 726F2E70726F647563742E70726F647563742E6E616D65 726F2E70726F647563742E70726F646375742E6E616D65
-for product_build_prop in $(sudo find "$GITHUB_WORKSPACE"/images/product -type f -name "build.prop"); do
-  sudo sed -i ''"$(sudo sed -n '/ro.product.product.name/=' "$product_build_prop")"'a ro.product.prodcut.name=diting' "$product_build_prop"
-done
-cp -f "$GITHUB_WORKSPACE"/tools/added_kmods/perfmgr.ko "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/perfmgr.ko
-sed -i "/perf_helper/a \/vendor\/lib\/modules\/perfmgr.ko:" "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/modules.dep
-sed -i "/perf_helper/a perfmgr.ko" "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/modules.load
-for joyose_files in $(sudo find "$GITHUB_WORKSPACE"/images/product/pangu/system/ -iname "*joyose_files*"); do
-  echo -e "\e[1;33m - 找到文件: $joyose_files \e[0m"
-  sudo rm -rf "$joyose_files"
-done
-sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/Joyose.zip -d "$GITHUB_WORKSPACE"/images/product/pangu/system/
-## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2)
-sudo mv -f $GITHUB_WORKSPACE/tools/updated_kmods/* "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/
+## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2.3)
+sudo mv -f $GITHUB_WORKSPACE/tools/updated_dlkm_kmods/* "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/
 # 添加 Root (刷入时可自行选择)
 echo -e "\e[1;31m - 添加 ROOT (刷入时可自行选择) \e[0m"
 ## 修补 Magisk 26.1 (Official)
@@ -195,16 +215,25 @@ echo -e "\e[1;33m - Patch KernelSU \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/boot
 cd "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/boot.img "$GITHUB_WORKSPACE"/boot
-cp -f "$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/tools/kernelsu_patch/bspatch "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/tools/kernelsu_patch/ksu.p "$GITHUB_WORKSPACE"/boot
-"$GITHUB_WORKSPACE"/boot/magiskboot unpack "$GITHUB_WORKSPACE"/boot/boot.img >/dev/null
+$magiskboot unpack "$GITHUB_WORKSPACE"/boot/boot.img >/dev/null
 mv "$GITHUB_WORKSPACE"/tools/boot_patch/Image "$GITHUB_WORKSPACE"/boot/kernel
 "$GITHUB_WORKSPACE"/boot/bspatch "$GITHUB_WORKSPACE"/boot/kernel "$GITHUB_WORKSPACE"/boot/kernel "$GITHUB_WORKSPACE"/boot/ksu.p
-"$GITHUB_WORKSPACE"/boot/magiskboot repack "$GITHUB_WORKSPACE"/boot/boot.img "$GITHUB_WORKSPACE"/images/boot_kernelsu.img >/dev/null
+$magiskboot repack "$GITHUB_WORKSPACE"/boot/boot.img "$GITHUB_WORKSPACE"/images/boot_kernelsu.img >/dev/null
 rm -rf "$GITHUB_WORKSPACE"/boot
-# 替换回 N12T 的 Overlay 叠加层
-echo -e "\e[1;31m - 替换回 N12T 的 Overlay 叠加层 \e[0m"
+# 添加 FEAS 支持 (libmigui/joyose)
+$magiskboot hexpatch "$GITHUB_WORKSPACE"/images/system_ext/lib64/libmigui.so 726F2E70726F647563742E70726F647563742E6E616D65 726F2E70726F647563742E70726F646375742E6E616D65
+for product_build_prop in $(sudo find "$GITHUB_WORKSPACE"/images/product -type f -name "build.prop"); do
+  sudo sed -i ''"$(sudo sed -n '/ro.product.product.name/=' "$product_build_prop")"'a ro.product.prodcut.name=diting' "$product_build_prop"
+done
+for joyose_files in $(sudo find "$GITHUB_WORKSPACE"/images/product/pangu/system/ -iname "*joyose_files*"); do
+  echo -e "\e[1;33m - 找到文件: $joyose_files \e[0m"
+  sudo rm -rf "$joyose_files"
+done
+sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/Joyose.zip -d "$GITHUB_WORKSPACE"/images/product/pangu/system/
+# 替换 Overlay 叠加层
+echo -e "\e[1;31m - 替换 Overlay 叠加层 \e[0m"
 if [[ $android_version == "13" ]]; then
   sudo rm -rf "$GITHUB_WORKSPACE"/images/product/overlay/*
   sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/overlay.zip -d "$GITHUB_WORKSPACE"/images/product/overlay
@@ -221,8 +250,8 @@ sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/wallpaper_group1.zip -d "
 # sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/bootanimation.zip -d "$GITHUB_WORKSPACE"/images/product/media/
 # 禁用恢复预置应用提示
 sudo cp -f "$GITHUB_WORKSPACE"/"${device}"_files/auto-install.json "$GITHUB_WORKSPACE"/images/product/etc/
-# 添加回 N12T device_features 文件
-echo -e "\e[1;31m - 添加回 N12T features 文件 \e[0m"
+# 添加 device_features 文件
+echo -e "\e[1;31m - 添加 device_features 文件 \e[0m"
 sudo rm -rf "$GITHUB_WORKSPACE"/images/product/etc/device_features/*
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/features.zip -d "$GITHUB_WORKSPACE"/images/product/etc/device_features/
 # 修改 build.prop
@@ -245,12 +274,12 @@ for build_prop in $(sudo find "$GITHUB_WORKSPACE"/"${device}"/ -type f -name "*b
   sudo sed -i 's/build.date=[^*]*/build.date='"$build_time"'/' "$build_prop"
   sudo sed -i 's/build.date.utc=[^*]*/build.date.utc='"$build_utc"'/' "$build_prop"
 done
+## 添加性能等级支持
 for odm_build_prop in $(sudo find "$GITHUB_WORKSPACE"/"${device}"/odm -type f -name "build.prop"); do
-  # 添加性能等级支持
   sudo sed -i ''"$(sudo sed -n '/ro.odm.build.version.sdk/=' "$odm_build_prop")"'a ro.odm.build.media_performance_class=33' "$odm_build_prop"
 done
+## 去除指纹位置指示
 if [[ $android_version == "14" ]]; then
-  # 去除指纹位置指示
   sudo sed -i s/ro.hardware.fp.sideCap=true/ro.hardware.fp.sideCap=false/g "$GITHUB_WORKSPACE"/"${device}"/vendor/build.prop
 fi
 rom_security=$(sudo cat "$GITHUB_WORKSPACE"/images/system/system/build.prop | grep 'ro.build.version.security_patch=' | cut -d '=' -f 2)
@@ -269,7 +298,6 @@ for files in MIGalleryLockscreen MIUIDriveMode MIUIDuokanReader MIUIGameCenter M
     sudo rm -rf $appsui
   fi
 done
-echo -e "\e[1;31m - 精简完成 \e[0m"
 # 分辨率修改
 echo -e "\e[1;31m - 分辨率修改 \e[0m"
 Find_character() {
@@ -297,9 +325,9 @@ if [[ $Character_present == true ]]; then
 else
   sudo sed -i ''"$(sudo sed -n '/ro.miui.notch/=' "$GITHUB_WORKSPACE"/images/product/etc/build.prop)"'a ro.millet.netlink=30' "$GITHUB_WORKSPACE"/images/product/etc/build.prop
 fi
-# 替换回 N12T 的音质音效
+# 替换音质音效
 for Sound in $(sudo find "$GITHUB_WORKSPACE"/images/product/ -type d -iname "*MiSound*"); do
-  echo -e "\e[1;31m - 替换回 N12T 的音质音效 \e[0m"
+  echo -e "\e[1;31m - 替换音质音效 \e[0m"
   sudo rm -rf $Sound
 done
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/MiSound.zip -d "$GITHUB_WORKSPACE"/images/product/app/
@@ -309,8 +337,8 @@ for Aiasst in $(sudo find "$GITHUB_WORKSPACE"/images/product/ -type d -iname "*a
   sudo rm -rf $Aiasst
 done
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/AiasstVision.zip -d "$GITHUB_WORKSPACE"/images/product/app/
-# 替换回 N12T 的相机标定
-echo -e "\e[1;31m - 替换回 N12T 的相机标定 \e[0m"
+# 替换相机标定
+echo -e "\e[1;31m - 替换相机标定 \e[0m"
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/CameraTools_beta.zip -d "$GITHUB_WORKSPACE"/images/product/app/
 # 部分机型指纹支付相关服务存在于 Product，需要清除
 echo -e "\e[1;31m - 清除多余指纹支付服务 \e[0m"
@@ -321,7 +349,6 @@ for files in IFAAService MipayService SoterService TimeService; do
     sudo rm -rf $appsui
   fi
 done
-echo -e "\e[1;31m - 清除多余指纹支付服务完成 \e[0m"
 # 占位毒瘤和广告
 sudo rm -rf "$GITHUB_WORKSPACE"/images/product/app/AnalyticsCore/*
 sudo cp -f "$GITHUB_WORKSPACE"/"${device}"_files/AnalyticsCore.apk "$GITHUB_WORKSPACE"/images/product/app/AnalyticsCore
@@ -367,7 +394,6 @@ echo -e "\e[1;33m - 反编译成功，开始回编译 \e[0m"
 cd "$GITHUB_WORKSPACE"/apk/services/
 sudo $Apktool b -q -f -c "$GITHUB_WORKSPACE"/apk/services/ -o services.jar
 sudo cp -rf "$GITHUB_WORKSPACE"/apk/services/services.jar "$GITHUB_WORKSPACE"/images/system/system/framework/services.jar
-echo -e "\e[1;31m - 移除 Android 签名校验完成 \e[0m"
 # 人脸修复
 echo -e "\e[1;31m - 人脸修复 \e[0m"
 for MiuiBiometric in $(sudo find "$GITHUB_WORKSPACE"/images/product/ -type d -iname "*MiuiBiometric*"); do
@@ -398,10 +424,10 @@ if [[ $android_version == "13" ]]; then
     sudo rm -rf "$nfc_files"
   done
   sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/nfc.zip -d "$GITHUB_WORKSPACE"/images/product/pangu/system/
-  echo -e "\e[1;31m - NFC 修复完成 \e[0m"
 fi
 # ext4_rw 修改
 if [[ "${IMAGE_TYPE}" == "ext4" && "${EXT4_RW}" == "true" ]]; then
+  ## 移除 mi_ext 和 pangu (product)
   pangu="$GITHUB_WORKSPACE"/images/product/pangu/system
   sudo find "$pangu" -type d | sed "s|$pangu|/system/system|g" | sed 's/$/ u:object_r:system_file:s0/' >>"$GITHUB_WORKSPACE"/images/config/system_file_contexts
   sudo find "$pangu" -type f | sed 's/\./\\./g' | sed "s|$pangu|/system/system|g" | sed 's/$/ u:object_r:system_file:s0/' >>"$GITHUB_WORKSPACE"/images/config/system_file_contexts
