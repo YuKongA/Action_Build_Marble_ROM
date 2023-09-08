@@ -136,13 +136,13 @@ if [ -f ramdisk.cpio ]; then
   EXTRACT_UNSAFE_SYMLINKS=1 cpio -d -F ../ramdisk.cpio -i 2>&1
 fi
 ## 添加 FEAS 支持 (perfmgr.ko from diting)
-sudo mv -f $GITHUB_WORKSPACE/tools/added_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/
+sudo mv -f $GITHUB_WORKSPACE/tools/added_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/
 echo "/lib/modules/perfmgr.ko:" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.dep
 echo "perfmgr.ko" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.load
 echo "perfmgr.ko" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.load.recovery
 ## 添加更新的内核模块 (vboot)
-sudo mv -f $GITHUB_WORKSPACE/tools/updated_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/
-sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/lib/modules/*
+sudo mv -f $GITHUB_WORKSPACE/tools/updated_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/
+sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/*
 ## 去除 A14 强制加密 (fstab)
 if [[ $android_version != "13" ]]; then
   echo -e "\e[1;33m - 去除 A14 强制加密 (fstab) \e[0m"
@@ -157,8 +157,8 @@ if [[ "${IMAGE_TYPE}" == "ext4" && "${EXT4_RW}" == "true" ]]; then
 fi
 ## 添加液态 2.0 支持 (fstab)
 echo -e "\e[1;31m - 添加液态 2.0 支持 (fstab) \e[0m"
-sudo mv -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/vendor_boot/first_stage_ramdisk/fstab.qcom
-sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/first_stage_ramdisk/fstab.qcom
+sudo cp -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/first_stage_ramdisk/fstab.qcom
+sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/first_stage_ramdisk/fstab.qcom
 ## 重新打包 Vendor Boot
 cd "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/
 find | sed 1d | cpio -H newc -R 0:0 -o -F ../ramdisk_new.cpio
@@ -183,8 +183,8 @@ sudo cp -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/"${device}"/
 # 内置 TWRP (skkk v7.9)
 echo -e "\e[1;31m - 内置 TWRP (skkk v7.9) \e[0m"
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
-# 替换官方 Boot (Melt-Kernel-marble-v2.2.3)
-echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.3) \e[0m"
+# 替换官方 Boot (Melt-Kernel-marble-v2.2.4)
+echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.4) \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/boot
 cd "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/boot.img "$GITHUB_WORKSPACE"/boot
@@ -202,7 +202,7 @@ for i in $unneeded_kmods; do
   sudo rm -rf "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/$i"
   sed -i "/$i/d" "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/modules.load"
 done
-## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2.3)
+## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2.4)
 sudo mv -f $GITHUB_WORKSPACE/tools/updated_dlkm_kmods/* "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/
 # 添加 Root (刷入时可自行选择)
 echo -e "\e[1;31m - 添加 ROOT (刷入时可自行选择) \e[0m"
