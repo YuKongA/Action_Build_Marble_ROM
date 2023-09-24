@@ -10,7 +10,7 @@ def scanfs(file) -> dict:
             filepath, *other = i.strip().split()
             filesystem_config[filepath] = other
             if long := len(other) > 4:
-                print(f"Warn:{i[0]} has too much data-{long}.")
+                print(f"[Warn] {i[0]} has too much data-{long}.")
     return filesystem_config
 
 
@@ -97,7 +97,7 @@ def fs_patch(fs_file, filename, dir_path) -> dict:  # 接收两个字典对比
                     mode = "0750"
                 else:
                     for s in ["/bin/su", "/xbin/su", "disable_selinux.sh", "daemon", "ext/.su", "install-recovery",
-                              'installed_su']:
+                              'installed_su', 'bin/rw-system.sh', 'bin/getSPL']:
                         if s in i:
                             mode = "0755"
                 config = [uid, gid, mode]
