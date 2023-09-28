@@ -183,8 +183,8 @@ sudo cp -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/"${device}"/
 # 内置 TWRP (skkk v7.9)
 echo -e "\e[1;31m - 内置 TWRP (skkk v7.9) \e[0m"
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
-# 替换官方 Boot (Melt-Kernel-marble-v2.2.4)
-echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.4) \e[0m"
+# 替换官方 Boot (Melt-Kernel-marble-v2.2.7)
+echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.7) \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/boot
 cd "$GITHUB_WORKSPACE"/boot
 cp -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/boot.img "$GITHUB_WORKSPACE"/boot
@@ -202,7 +202,7 @@ for i in $unneeded_kmods; do
   sudo rm -rf "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/$i"
   sed -i "/$i/d" "$GITHUB_WORKSPACE/${device}/vendor_dlkm/lib/modules/modules.load"
 done
-## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2.4)
+## 添加更新的内核模块 (Kernel Modules from Melt-Kernel-marble-v2.2.7)
 sudo mv -f $GITHUB_WORKSPACE/tools/updated_dlkm_kmods/* "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/
 # 添加 Root (刷入时可自行选择)
 echo -e "\e[1;31m - 添加 ROOT (刷入时可自行选择) \e[0m"
