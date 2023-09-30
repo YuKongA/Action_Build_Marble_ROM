@@ -291,7 +291,7 @@ echo -e "\e[1;31m - 移植小米 13 的清理震动效果 \e[0m"
 sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/vibrator_firmware.zip -d "$GITHUB_WORKSPACE"/"${device}"/vendor/firmware/
 # 精简部分应用
 echo -e "\e[1;31m - 精简部分应用 \e[0m"
-for files in MIGalleryLockscreen MIUIDriveMode MIUIDuokanReader MIUIGameCenter MIUINewHome MIUIYoupin Xinre SmartHome MiShop MiRadio MIUICompass MediaEditor BaiduIME iflytek.inputmethod MIService MIUIEmail MIUIVideo MIUIMusicT; do
+for files in MIGalleryLockscreen MIUIDriveMode MIUIDuokanReader MIUIGameCenter MIUINewHome MIUIYoupin MIUIHuanJi MIUIMiDrive MIUIVirtualSim ThirdAppAssistant XMRemoteController MIUIVipAccount MiuiScanner Xinre SmartHome MiShop MiRadio MIUICompass MediaEditor BaiduIME iflytek.inputmethod MIService MIUIEmail MIUIVideo MIUIMusicT; do
   appsui=$(sudo find "$GITHUB_WORKSPACE"/images/product/data-app/ -type d -iname "*${files}*")
   if [[ $appsui != "" ]]; then
     echo -e "\e[1;33m - 找到精简目录: $appsui \e[0m"
@@ -546,22 +546,24 @@ elif [[ "${IMAGE_TYPE}" == "ext4" ]]; then
       eval "$i"_size=$(du -sb "$GITHUB_WORKSPACE"/images/$i.img | awk {'print $1'})
       img_free
     fi
-    # 第二次打包 (各预留 100M 空间)
+    # 第二次打包 (除 mi_ext/vendor_dlkm 外各预留 100M 空间)
     if [[ "${EXT4_RW}" == "true" ]]; then
-      eval "$i"_size=$(echo "$(eval echo "$"$i"_size") + 104857600" | bc)
-      eval "$i"_size=$(echo "$(eval echo "$"$i"_size") * 4096 / 4096 / 4096" | bc)
-      sudo rm -rf "$GITHUB_WORKSPACE"/images/$i.img
-      echo -e "\e[1;31m - 二次生成: $i \e[0m"
-      "$GITHUB_WORKSPACE"/tools/mke2fs -O ^has_journal -L $i -I 256 -N $(eval echo "$"$i"_inode") -M /$i -m 0 -t ext4 -b 4096 "$GITHUB_WORKSPACE"/images/$i.img $(eval echo "$"$i"_size") || false
-      Start_Time
-      if [[ "${EXT4_RW}" == "true" ]]; then
-        sudo "$GITHUB_WORKSPACE"/tools/e2fsdroid -e -T 1230768000 -C "$GITHUB_WORKSPACE"/images/config/"$i"_fs_config -S "$GITHUB_WORKSPACE"/images/config/"$i"_file_contexts -f "$GITHUB_WORKSPACE"/images/$i -a /$i "$GITHUB_WORKSPACE"/images/$i.img || false
-      else
-        sudo "$GITHUB_WORKSPACE"/tools/e2fsdroid -e -T 1230768000 -C "$GITHUB_WORKSPACE"/images/config/"$i"_fs_config -S "$GITHUB_WORKSPACE"/images/config/"$i"_file_contexts -f "$GITHUB_WORKSPACE"/images/$i -a /$i -s "$GITHUB_WORKSPACE"/images/$i.img || false
+      if [[ $i != mi_ext && $i != vendor_dlkm ]]; then
+        eval "$i"_size=$(echo "$(eval echo "$"$i"_size") + 104857600" | bc)
+        eval "$i"_size=$(echo "$(eval echo "$"$i"_size") * 4096 / 4096 / 4096" | bc)
+        sudo rm -rf "$GITHUB_WORKSPACE"/images/$i.img
+        echo -e "\e[1;31m - 二次生成: $i \e[0m"
+        "$GITHUB_WORKSPACE"/tools/mke2fs -O ^has_journal -L $i -I 256 -N $(eval echo "$"$i"_inode") -M /$i -m 0 -t ext4 -b 4096 "$GITHUB_WORKSPACE"/images/$i.img $(eval echo "$"$i"_size") || false
+        Start_Time
+        if [[ "${EXT4_RW}" == "true" ]]; then
+          sudo "$GITHUB_WORKSPACE"/tools/e2fsdroid -e -T 1230768000 -C "$GITHUB_WORKSPACE"/images/config/"$i"_fs_config -S "$GITHUB_WORKSPACE"/images/config/"$i"_file_contexts -f "$GITHUB_WORKSPACE"/images/$i -a /$i "$GITHUB_WORKSPACE"/images/$i.img || false
+        else
+          sudo "$GITHUB_WORKSPACE"/tools/e2fsdroid -e -T 1230768000 -C "$GITHUB_WORKSPACE"/images/config/"$i"_fs_config -S "$GITHUB_WORKSPACE"/images/config/"$i"_file_contexts -f "$GITHUB_WORKSPACE"/images/$i -a /$i -s "$GITHUB_WORKSPACE"/images/$i.img || false
+        fi
+        End_Time 二次打包"$i".img
+        eval "$i"_size=$(du -sb "$GITHUB_WORKSPACE"/images/$i.img | awk {'print $1'})
+        img_free
       fi
-      End_Time 二次打包"$i".img
-      eval "$i"_size=$(du -sb "$GITHUB_WORKSPACE"/images/$i.img | awk {'print $1'})
-      img_free
     fi
     sudo rm -rf "$GITHUB_WORKSPACE"/images/$i
   done
