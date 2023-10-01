@@ -15,7 +15,7 @@ android_version=$(echo ${URL} | cut -d"_" -f5 | cut -d"." -f1)
 
 device=marble
 
-magiskboot="$GITHUB_WORKSPACE"/tools/magisk_patch/magiskboot
+magiskboot="$GITHUB_WORKSPACE"/tools/magiskboot
 
 Start_Time() {
   Start_ns=$(date +'%s%N')
@@ -207,8 +207,8 @@ done
 sudo mv -f $GITHUB_WORKSPACE/tools/updated_dlkm_kmods/* "$GITHUB_WORKSPACE"/"${device}"/vendor_dlkm/lib/modules/
 # 添加 Root (刷入时可自行选择)
 echo -e "\e[1;31m - 添加 ROOT (刷入时可自行选择) \e[0m"
-## 修补 Magisk 26.1 (Official)
-echo -e "\e[1;33m - 修补 Magisk 26.1 (Official) \e[0m"
+## 修补 Magisk 26.3 (Official)
+echo -e "\e[1;33m - 修补 Magisk 26.3 (Official) \e[0m"
 sh "$GITHUB_WORKSPACE"/tools/magisk_patch/boot_patch.sh "$GITHUB_WORKSPACE"/images/boot_patch.img
 mv "$GITHUB_WORKSPACE"/tools/magisk_patch/new-boot.img "$GITHUB_WORKSPACE"/images/boot_magisk.img
 ## Patch KernelSU
