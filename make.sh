@@ -117,6 +117,7 @@ echo -e "\e[1;31m - 去除 AVB2.0 校验 \e[0m"
 "$GITHUB_WORKSPACE"/tools/vbmeta-disable-verification "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vbmeta.img
 "$GITHUB_WORKSPACE"/tools/vbmeta-disable-verification "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vbmeta_system.img
 # 修改 Vendor Boot
+echo -e "\e[1;31m - 修改 Vendor Boot \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/vendor_boot
 cd "$GITHUB_WORKSPACE"/vendor_boot
 mv -f "$GITHUB_WORKSPACE"/"${device}"/firmware-update/vendor_boot.img "$GITHUB_WORKSPACE"/vendor_boot
