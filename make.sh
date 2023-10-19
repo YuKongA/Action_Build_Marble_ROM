@@ -361,7 +361,7 @@ sudo rm -rf "$GITHUB_WORKSPACE"/images/product/overlay/DeviceConfig.apk || true
 sudo rm -rf "$GITHUB_WORKSPACE"/images/product/overlay/SettingsRroDeviceSystemUiOverlay.apk || true
 sudo unzip -o -q "$GITHUB_WORKSPACE"/tools/flashtools.zip -d "$GITHUB_WORKSPACE"/images
 if [[ $android_version == "13" ]]; then
-  # 添加相机 4K60FPS 支持
+  # A13 添加相机 4K60FPS 支持
   echo -e "\e[1;31m - 添加相机 4K60FPS 支持 \e[0m"
   sudo rm -rf "$GITHUB_WORKSPACE"/images/product/priv-app/MiuiCamera/*
   sudo cat "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.1.apk "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.2.apk >"$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk
@@ -370,8 +370,8 @@ else
   # A14 相机修复
   echo -e "\e[1;31m - A14 相机修复 \e[0m"
   sudo rm -rf "$GITHUB_WORKSPACE"/images/product/priv-app/MiuiCamera/*
-  sudo cat "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.A14.z* >"$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.zip
-  sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.zip -d "$GITHUB_WORKSPACE"/images/product/priv-app/MiuiCamera/
+  sudo cat "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk.1 "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk.2 "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk.3 >"$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk
+  sudo cp -f "$GITHUB_WORKSPACE"/"${device}"_files/MiuiCamera.apk "$GITHUB_WORKSPACE"/images/product/priv-app/MiuiCamera/
 fi
 # 移除 Android 签名校验
 sudo mkdir -p "$GITHUB_WORKSPACE"/apk/
