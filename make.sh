@@ -144,12 +144,6 @@ echo "perfmgr.ko" >>"$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/modules.
 ## 添加更新的内核模块 (vboot)
 sudo mv -f $GITHUB_WORKSPACE/tools/updated_vboot_kmods/* "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/
 sudo chmod 644 "$GITHUB_WORKSPACE"/vendor_boot/ramdisk/lib/modules/*
-## 去除 A14 强制加密 (fstab)
-if [[ $android_version != "13" ]]; then
-  echo -e "\e[1;33m - 去除 A14 强制加密 (fstab) \e[0m"
-  sudo rm -rf "$GITHUB_WORKSPACE"/tools/fstab.qcom
-  sudo mv -f "$GITHUB_WORKSPACE"/tools/fstab.qcom-A14 "$GITHUB_WORKSPACE"/tools/fstab.qcom
-fi
 ## 移除 mi_ext 和 pangu (fstab)
 if [[ "${IMAGE_TYPE}" == "ext4" && "${EXT4_RW}" == "true" ]]; then
   echo -e "\e[1;33m - 移除 mi_ext 和 pangu (fstab) \e[0m"
@@ -182,8 +176,13 @@ sudo rm -rf "$GITHUB_WORKSPACE"/vendor_boot
 # 替换 Vendor 的 fstab
 sudo cp -f "$GITHUB_WORKSPACE"/tools/fstab.qcom "$GITHUB_WORKSPACE"/"${device}"/vendor/etc/fstab.qcom
 # 内置 TWRP (skkk v7.9)
-echo -e "\e[1;31m - 内置 TWRP (skkk v7.9) \e[0m"
-sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
+if [[ $android_version == "13" ]]; then
+  echo -e "\e[1;31m - 内置 TWRP (skkk v7.9) \e[0m"
+  sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
+else
+  echo -e "\e[1;31m - 内置 TWRP (skkk v8.0) \e[0m"
+  sudo unzip -o -q "$GITHUB_WORKSPACE"/"${device}"_files/recovery-A14.zip -d "$GITHUB_WORKSPACE"/"${device}"/firmware-update/
+fi
 # 替换官方 Boot (Melt-Kernel-marble-v2.2.7)
 echo -e "\e[1;33m - 替换官方 Boot (Melt-Kernel-marble-v2.2.7) \e[0m"
 mkdir -p "$GITHUB_WORKSPACE"/boot
